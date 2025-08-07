@@ -173,4 +173,4 @@ class ValueWindow(QWidget):
     def closeEvent(self, event):
         """Ensure logging is stopped when the window is closed."""
         self.stop_logging()
-        super().closeEvent(event)#うんちっち
+        super().closeEvent(event)
