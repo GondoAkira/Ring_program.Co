@@ -2,7 +2,7 @@ import csv
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QScrollArea, QLabel, QLineEdit, 
-    QPushButton, QGroupBox, QHBoxLayout, QFileDialog
+    QPushButton, QGroupBox, QFileDialog, QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import QTimer, Qt, QEvent
 from PySide6.QtGui import QFont
@@ -29,8 +29,6 @@ class ValueWindow(QWidget):
         values_layout = QVBoxLayout()
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        
-        # Install event filter on the scroll area to capture wheel events
         scroll_area.installEventFilter(self)
 
         scroll_widget = QWidget()
@@ -45,18 +43,14 @@ class ValueWindow(QWidget):
         for i in range(num_items):
             row = i % num_rows
             col = i // num_rows
-            
             num = i + 1
             label = QLabel(f"Value {num}:")
             line_edit = QLineEdit()
             line_edit.setReadOnly(True)
-            
             label.setFont(initial_font)
             line_edit.setFont(initial_font)
-            
             self.grid_layout.addWidget(label, row, col * 2)
             self.grid_layout.addWidget(line_edit, row, col * 2 + 1)
-            
             self.value_labels[i] = label
             self.value_line_edits[i] = line_edit
 
@@ -75,11 +69,21 @@ class ValueWindow(QWidget):
         self.log_file_label.setReadOnly(True)
         self.log_file_label.setPlaceholderText("Log file path...")
 
+        # ロギング対象選択
+        self.radio_all = QRadioButton("全60個")
+        self.radio_right = QRadioButton("右端15個のみ")
+        self.radio_all.setChecked(True)
+        self.log_radio_group = QButtonGroup()
+        self.log_radio_group.addButton(self.radio_all)
+        self.log_radio_group.addButton(self.radio_right)
+
         logging_layout.addWidget(self.log_start_button, 0, 0)
         logging_layout.addWidget(self.log_stop_button, 0, 1)
         logging_layout.addWidget(QLabel("File:"), 1, 0)
         logging_layout.addWidget(self.log_file_label, 1, 1)
-        logging_layout.addWidget(self.log_status_label, 2, 0, 1, 2)
+        logging_layout.addWidget(self.radio_all, 2, 0)
+        logging_layout.addWidget(self.radio_right, 2, 1)
+        logging_layout.addWidget(self.log_status_label, 3, 0, 1, 2)
         logging_group.setLayout(logging_layout)
 
         main_layout.addWidget(values_group)
@@ -110,7 +114,6 @@ class ValueWindow(QWidget):
 
         font = QFont()
         font.setPointSize(int(self.current_font_size))
-        
         for i in range(len(self.value_labels)):
             self.value_labels[i].setFont(font)
             self.value_line_edits[i].setFont(font)
@@ -120,21 +123,21 @@ class ValueWindow(QWidget):
         if index in self.value_line_edits:
             self.value_line_edits[index].setText(str(value))
 
-
     def start_logging(self):
         default_filename = f"C:\\temp\\VBdata\\LOGDATA-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Log File", default_filename, "CSV Files (*.csv);;All Files (*)")
-        
         if not file_path:
             return
 
         self.log_file_path = file_path
         self.log_file_label.setText(file_path)
-        
         try:
             with open(self.log_file_path, 'w', newline='') as f:
                 writer = csv.writer(f)
-                header = ["Timestamp"] + [self.value_labels[i].text() for i in range(len(self.value_line_edits))]
+                if self.radio_right.isChecked():
+                    header = ["Timestamp"] + [self.value_labels[i].text() for i in range(45, 60)]
+                else:
+                    header = ["Timestamp"] + [self.value_labels[i].text() for i in range(60)]
                 writer.writerow(header)
         except Exception as e:
             self.log_status_label.setText(f"Error: {e}")
@@ -154,12 +157,14 @@ class ValueWindow(QWidget):
     def log_current_values(self):
         if not self.log_file_path:
             return
-        
         try:
             with open(self.log_file_path, 'a', newline='') as f:
                 writer = csv.writer(f)
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                values = [self.value_line_edits[i].text() for i in range(len(self.value_line_edits))]
+                if self.radio_right.isChecked():
+                    values = [self.value_line_edits[i].text() for i in range(45, 60)]
+                else:
+                    values = [self.value_line_edits[i].text() for i in range(60)]
                 writer.writerow([timestamp] + values)
         except Exception as e:
             self.log_status_label.setText(f"Error: {e}")
@@ -169,4 +174,3 @@ class ValueWindow(QWidget):
         """Ensure logging is stopped when the window is closed."""
         self.stop_logging()
         super().closeEvent(event)
-
