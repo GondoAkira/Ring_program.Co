@@ -6,18 +6,20 @@ from PySide6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 from .matplotlib_widget import MatplotlibWidget
 
-class GraphWindow(QMainWindow):
-    """A window to display the matplotlib graph with gain/offset controls."""
+class BKGraphWindow(QMainWindow):
+    """A window to display the 8-channel BK buffer graph with all controls."""
     closing = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Graph View")
-        self.setGeometry(200, 200, 800, 700)
+        self.setWindowTitle("Err wave View")
+        self.setGeometry(250, 250, 800, 700)
 
         self.original_data = None
         self.controls = {}
         self.is_autoscale = True
+        self.num_channels = 8
+        self.points_per_channel = 512
 
         # --- Main Layout ---
         central_widget = QWidget()
@@ -38,7 +40,7 @@ class GraphWindow(QMainWindow):
         self.y_min_spinbox.setRange(-1e9, 1e9)
         self.y_max_spinbox = QDoubleSpinBox()
         self.y_max_spinbox.setRange(-1e9, 1e9)
-        self.y_max_spinbox.setValue(5000) # Default value
+        self.y_max_spinbox.setValue(5000)
 
         apply_scale_button = QPushButton("Apply Y-Scale")
         auto_scale_button = QPushButton("Auto Scale")
@@ -59,7 +61,7 @@ class GraphWindow(QMainWindow):
         controls_group = QGroupBox("Channel Controls")
         controls_layout = QHBoxLayout()
         
-        for i in range(4): # 4 Channels
+        for i in range(self.num_channels):
             ch_layout = QVBoxLayout()
             ch_label = QLabel(f"Channel {i+1}")
             ch_label.setAlignment(Qt.AlignCenter)
@@ -111,16 +113,15 @@ class GraphWindow(QMainWindow):
             return
 
         processed_data = self.original_data.copy()
-        points_per_channel = 1024
 
-        for i in range(4):
+        for i in range(self.num_channels):
             gain = self.controls[i]['gain'].value()
             offset = self.controls[i]['offset'].value()
-            start_index = i * points_per_channel
-            end_index = start_index + points_per_channel
+            start_index = i * self.points_per_channel
+            end_index = start_index + self.points_per_channel
             processed_data[start_index:end_index] = self.original_data[start_index:end_index] * gain + offset
 
-        self.graph_widget.plot_data(processed_data)
+        self.graph_widget.plot_data(processed_data, num_channels=self.num_channels, points_per_channel=self.points_per_channel)
         if not self.is_autoscale:
             self.apply_y_scale()
 
@@ -134,7 +135,7 @@ class GraphWindow(QMainWindow):
     def enable_auto_scale(self):
         self.is_autoscale = True
         self.graph_widget.axes.autoscale(enable=True, axis='y')
-        self.apply_and_redraw() # Redraw to apply auto-scaling
+        self.apply_and_redraw()
 
     def clear_graph(self):
         self.original_data = None

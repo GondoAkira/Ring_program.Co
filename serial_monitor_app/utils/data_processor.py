@@ -5,9 +5,9 @@ class DataProcessor(QObject):
     """Parses incoming serial data and manages data buffers."""
     # Signal(index, value)
     pi_data_updated = Signal(int, str)
-    # Signal() indicating the buffer has been updated and graph should be redrawn
-    mem_data_updated = Signal()
-    bk_data_updated = Signal()
+    # Signal(numpy.ndarray) indicating the buffer has been updated and graph should be redrawn
+    mem_data_updated = Signal(object)
+    bk_data_updated = Signal(object)
     # Signal for unrecognized data for logging
     parsing_error = Signal(str)
 
@@ -40,7 +40,7 @@ class DataProcessor(QObject):
                 # Format: "MB,####,FFFF"
                 address = int(parts[1])
                 if address > 4999: # End of data transmission
-                    self.mem_data_updated.emit()
+                    self.mem_data_updated.emit(self.mem_buf_original)
                 else:
                     value = float(parts[2])
                     self.mem_buf[address] = value
@@ -50,7 +50,7 @@ class DataProcessor(QObject):
                 # Format: "BK,####,FFFF"
                 address = int(parts[1])
                 if address > 4999: # End of data transmission
-                    self.bk_data_updated.emit()
+                    self.bk_data_updated.emit(self.bk_buf_original)
                 else:
                     value = float(parts[2])
                     self.bk_buf[address] = value

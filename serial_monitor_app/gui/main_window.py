@@ -1,35 +1,3 @@
-# c:\Users\81804\Documents\0.lab-project\A program of Serial.exe from Mr. Tatsuno in TSC 20250730\serial_monitor_app\gui\main_window.py の修正例
-
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout # 必要なものをインポート
-from .graph_widget import MplGraphWidget # 作成したグラフウィジェットをインポート
-
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Serial Monitor with Graph")
-        
-        # ... (既存の初期化処理) ...
-
-        # メインのウィジェットとレイアウトを設定
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget) # 例としてQVBoxLayoutを使用
-
-        # ... (他のウィジェットの追加) ...
-
-        # グラフウィジェットを作成してレイアウトに追加
-        self.graph_widget = MplGraphWidget()
-        main_layout.addWidget(self.graph_widget)
-
-        # ... (他のウィジェットの追加) ...
-
-        # シリアルデータ受信時などにグラフを更新する
-        # self.serial_thread.data_received.connect(self.update_graph_data)
-
-    # def update_graph_data(self, new_x, new_y):
-    #     """シリアルデータ受信などでグラフを更新するためのメソッド（例）"""
-    #     self.graph_widget.update_plot(new_x, new_y)
-
 import sys
 import os
 import json
@@ -46,19 +14,19 @@ from utils.data_processor import DataProcessor
 from gui.commands_widget import CommandsWidget
 from gui.value_window import ValueWindow
 from gui.graph_window import GraphWindow
+from gui.bk_graph_window import BKGraphWindow
 from gui.connection_widget import ConnectionWidget
 from gui.control_widget import ControlWidget
 from gui.log_widget import LogWidget
 from gui.logging_widget import LoggingWidget
+from gui.eeprom_window import EEPROMWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Serial Monitor")
-        # ステータスバーを初期化
         self.statusBar = QStatusBar(self)
         self.setStatusBar(self.statusBar)
-        # ステータスバーに表示するラベルを作成
         self.status_connection_label = QLabel("Disconnected")
         self.status_activity_label = QLabel("Idle")
         self.statusBar.addPermanentWidget(self.status_connection_label)
@@ -69,13 +37,14 @@ class MainWindow(QMainWindow):
         self.data_processor = DataProcessor()
         self.auto_run_timer = QTimer(self)
         self.value_window = ValueWindow()
-        self.graph_window = GraphWindow()
+        self.mem_graph_windows = []
+        self.bk_graph_windows = []
+        self.eeprom_window = EEPROMWindow()
         self.is_eeprom_reading = False
         self.command_history = []
         self.settings = QSettings("YourCompany", "SerialMonitorApp")
         self.history_index = 0
 
-        # --- Central Widget and Main Layout ---
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -86,25 +55,20 @@ class MainWindow(QMainWindow):
         self.commands_widget = CommandsWidget()
         self.logging_widget = LoggingWidget(self.value_window)
 
-        # Top horizontal layout for controls and logging
         top_controls_layout = QHBoxLayout()
         top_controls_layout.addWidget(self.control_widget)
         top_controls_layout.addWidget(self.logging_widget)
 
-        # Bottom horizontal layout for the main work area (log and commands)
         main_work_area_layout = QHBoxLayout()
-        # Give the log widget more horizontal space (stretch factor 2)
         main_work_area_layout.addWidget(self.log_widget, 2)
-        # Give the commands widget less horizontal space (stretch factor 1)
         main_work_area_layout.addWidget(self.commands_widget, 1)
 
         main_layout.addWidget(self.connection_widget)
         main_layout.addLayout(top_controls_layout)
         main_layout.addLayout(main_work_area_layout)
 
-        # --- Set Validators ---
-        self.control_widget.auto_run_interval.setValidator(QIntValidator(1, 600000)) # 1ms to 10min
-        main_layout.setStretch(2, 1) # Make the main work area expand vertically
+        self.control_widget.auto_run_interval.setValidator(QIntValidator(1, 600000))
+        main_layout.setStretch(2, 1)
 
         # --- Connect signals and slots ---
         self.connection_widget.open_button.clicked.connect(self.open_port)
@@ -113,7 +77,9 @@ class MainWindow(QMainWindow):
         
         self.control_widget.auto_run_button.toggled.connect(self.toggle_auto_run)
         self.control_widget.show_values_button.clicked.connect(self.value_window.show)
-        self.control_widget.show_graph_button.clicked.connect(self.graph_window.show)
+        self.control_widget.new_mem_graph_button.clicked.connect(self.open_new_mem_graph_window)
+        self.control_widget.new_bk_graph_button.clicked.connect(self.open_new_bk_graph_window)
+        self.control_widget.show_eeprom_button.clicked.connect(self.eeprom_window.show)
 
         self.log_widget.send_button.clicked.connect(self.send_main_command)
         self.log_widget.clear_button.clicked.connect(self.log_widget.receive_textbox.clear)
@@ -126,12 +92,14 @@ class MainWindow(QMainWindow):
         self.serial_handler.data_received.connect(self.route_received_data)
 
         self.data_processor.parsing_error.connect(self.on_data_received)
-        self.data_processor.mem_data_updated.connect(self.update_graph)
+        self.data_processor.mem_data_updated.connect(self.update_mem_graphs)
+        self.data_processor.bk_data_updated.connect(self.update_bk_graphs)
         self.data_processor.pi_data_updated.connect(self.value_window.update_value)
         
         self.commands_widget.command_to_send.connect(self.send_data)
-        self.commands_widget.eeprom_read_started.connect(self.handle_eeprom_read_start)
-        self.commands_widget.eeprom_process_finished.connect(self.handle_eeprom_process_finish)
+        self.eeprom_window.command_to_send.connect(self.send_data)
+        self.eeprom_window.eeprom_read_started.connect(self.handle_eeprom_read_start)
+        self.eeprom_window.eeprom_process_finished.connect(self.handle_eeprom_process_finish)
         self.commands_widget.load_commands_requested.connect(self.load_commands_from_file)
         self.commands_widget.save_commands_requested.connect(self.save_commands_to_file)
         self.logging_widget.logging_status_changed.connect(self.update_activity_label)
@@ -160,7 +128,6 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Commands File", config_dir, "JSON files (*.json);;All Files (*)")
         if not file_path:
             return
-
         try:
             data = {
                 "commands": [self.commands_widget.command_entries[i].text() for i in range(33)],
@@ -189,20 +156,14 @@ class MainWindow(QMainWindow):
                 if not silent:
                     QMessageBox.warning(self, "Unsupported File", f"Unsupported file type: {ext}")
                 return
-
-            # Load commands
             for i, text in enumerate(commands):
                 if i < len(self.commands_widget.command_entries):
                     self.commands_widget.command_entries[i].setText(text)
-            
-            # Load labels
             for i, text in enumerate(labels):
                 if i in self.value_window.value_labels:
                     self.value_window.value_labels[i].setText(text)
-            
             if not silent:
                 self.log_widget.receive_textbox.append(f"--- Commands loaded from {os.path.basename(file_path)} ---")
-
         except FileNotFoundError:
             if not silent:
                 QMessageBox.warning(self, "Not Found", f"Configuration file not found: {os.path.basename(file_path)}")
@@ -211,12 +172,10 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to load commands file: {e}")
 
     def route_received_data(self, data):
-        # Add a timestamp to all incoming data and log it.
         timestamp = datetime.now().strftime("[%H:%M:%S.%f]")[:-3]
         self.log_widget.receive_textbox.append(f"{timestamp} {data}")
-
         if self.is_eeprom_reading:
-            self.commands_widget.append_to_read_buffer(data)
+            self.eeprom_window.append_to_read_buffer(data)
         else:
             self.data_processor.process_line(data)
 
@@ -254,12 +213,9 @@ class MainWindow(QMainWindow):
 
     def send_main_command(self):
         data = self.log_widget.send_textbox.text()
-        # Add to history if not empty and not a duplicate of the last command
         if data and (not self.command_history or self.command_history[-1] != data):
             self.command_history.append(data)
-        # Reset history index to be at the end (for new typing)
         self.history_index = len(self.command_history)
-        
         self.send_data(data)
         self.log_widget.send_textbox.clear()
 
@@ -299,12 +255,18 @@ class MainWindow(QMainWindow):
         self.statusBar.showMessage(message, 5000)
 
     def on_data_received(self, data):
-        # This now primarily handles parsing errors from the DataProcessor.
         timestamp = datetime.now().strftime("[%H:%M:%S.%f]")[:-3]
         self.log_widget.receive_textbox.append(f"{timestamp} {data}")
 
-    def update_graph(self):
-        self.graph_window.update_plot(self.data_processor.mem_buf)
+    def update_mem_graphs(self, original_data):
+        for w in self.mem_graph_windows:
+            if w.isVisible():
+                w.update_and_plot(original_data)
+
+    def update_bk_graphs(self, original_data):
+        for w in self.bk_graph_windows:
+            if w.isVisible():
+                w.update_and_plot(original_data)
 
     def toggle_auto_run(self, checked):
         if checked:
@@ -325,7 +287,6 @@ class MainWindow(QMainWindow):
         self.update_activity_label()
 
     def update_activity_label(self):
-        """Updates the activity status label based on the application state priority."""
         if self.is_eeprom_reading:
             self.status_activity_label.setText("EEPROM Reading...")
         elif self.logging_widget.is_logging:
@@ -339,14 +300,32 @@ class MainWindow(QMainWindow):
         command = self.control_widget.auto_run_command.text()
         self.send_data(command)
 
+    def open_new_mem_graph_window(self):
+        new_window = GraphWindow(self)
+        new_window.closing.connect(lambda: self.remove_graph_window(new_window, 'mem'))
+        self.mem_graph_windows.append(new_window)
+        new_window.show()
+        if self.data_processor.mem_buf_original is not None:
+            new_window.update_and_plot(self.data_processor.mem_buf_original)
+
+    def open_new_bk_graph_window(self):
+        new_window = BKGraphWindow(self)
+        new_window.closing.connect(lambda: self.remove_graph_window(new_window, 'bk'))
+        self.bk_graph_windows.append(new_window)
+        new_window.show()
+        if self.data_processor.bk_buf_original is not None:
+            new_window.update_and_plot(self.data_processor.bk_buf_original)
+
+    def remove_graph_window(self, window, window_type):
+        if window_type == 'mem' and window in self.mem_graph_windows:
+            self.mem_graph_windows.remove(window)
+        elif window_type == 'bk' and window in self.bk_graph_windows:
+            self.bk_graph_windows.remove(window)
+
     def restore_settings(self):
-        """Restore window geometry and connection settings."""
         if self.settings.value("geometry"):
             self.restoreGeometry(self.settings.value("geometry"))
-        
-        self.refresh_ports() # Load available ports first
-        
-        # Restore connection settings
+        self.refresh_ports()
         port = self.settings.value("port", "")
         if port and self.connection_widget.com_port_combo.findText(port) != -1:
             self.connection_widget.com_port_combo.setCurrentText(port)
@@ -354,28 +333,28 @@ class MainWindow(QMainWindow):
         self.connection_widget.parity_combo.setCurrentText(self.settings.value("parity", "None"))
 
     def closeEvent(self, event):
-        """Save settings on close."""
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("port", self.connection_widget.com_port_combo.currentText())
         self.settings.setValue("baudrate", self.connection_widget.baud_rate_combo.currentText())
         self.settings.setValue("parity", self.connection_widget.parity_combo.currentText())
         self.value_window.close()
-        self.graph_window.close()
+        self.eeprom_window.close()
+        for window in list(self.mem_graph_windows):
+            window.close()
+        for window in list(self.bk_graph_windows):
+            window.close()
         self.close_port()
         event.accept()
 
     def navigate_history(self, direction):
-        """Navigate through command history."""
         if not self.command_history:
             return
-
-        if direction == 0:  # Up
+        if direction == 0:
             if self.history_index > 0:
                 self.history_index -= 1
-        else:  # Down
+        else:
             if self.history_index < len(self.command_history):
                 self.history_index += 1
-
         if self.history_index < len(self.command_history):
             command = self.command_history[self.history_index]
             self.log_widget.send_textbox.setText(command)
@@ -388,10 +367,10 @@ class MainWindow(QMainWindow):
             key = event.key()
             if key == Qt.Key_Up:
                 self.navigate_history(0)
-                return True  # Event handled
+                return True
             elif key == Qt.Key_Down:
                 self.navigate_history(1)
-                return True  # Event handled
+                return True
         return super().eventFilter(watched, event)
 
 if __name__ == '__main__':
