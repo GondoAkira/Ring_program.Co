@@ -276,9 +276,12 @@ class MainWindow(QMainWindow):
         self.connection_widget.baud_rate_combo.setEnabled(False)
         self.connection_widget.parity_combo.setEnabled(False)
         self.log_widget.receive_textbox.append("--- Port Opened ---")
+        # Automatically send *IDN? command upon connection
+        self.log_widget.receive_textbox.append("--- Sending *IDN? ---")
+        self.send_data("*IDN?")
         port_name = self.serial_handler.serial.port
         self.status_connection_label.setText(f"Connected: {port_name}")
-        self.statusBar.showMessage("Port opened successfully", 3000)
+        self.statusBar.showMessage("Port opened successfully. Sent *IDN?.", 3000)
 
     def on_port_closed(self):
         self.connection_widget.open_button.setEnabled(True)
