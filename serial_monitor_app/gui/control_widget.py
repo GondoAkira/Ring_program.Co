@@ -1,26 +1,35 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QGridLayout, QLabel, QPushButton, QLineEdit, QGroupBox, QHBoxLayout
+    QWidget, QVBoxLayout, QGridLayout, QLabel, QPushButton, QLineEdit, 
+    QGroupBox, QHBoxLayout
 )
+from PySide6.QtCore import Signal
 
 class ControlWidget(QWidget):
+    command_to_send = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
-
-        # Top-level layout to control horizontal stretching
         top_level_layout = QHBoxLayout(self)
         top_level_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Vertical layout to hold the group boxes
         main_layout = QVBoxLayout()
 
         # --- View Group ---
         view_group = QGroupBox("Views")
-        view_layout = QHBoxLayout()
+        view_layout = QVBoxLayout() # Changed to QVBoxLayout
+
+        # Buttons layout
+        buttons_layout = QHBoxLayout()
         self.show_values_button = QPushButton("Show Values")
-        self.show_graph_button = QPushButton("Show Graph")
-        view_layout.addWidget(self.show_values_button)
-        view_layout.addWidget(self.show_graph_button)
-        view_layout.addStretch(1)
+        self.new_mem_graph_button = QPushButton("Graph")
+        self.new_bk_graph_button = QPushButton("Err wave")
+        self.show_eeprom_button = QPushButton("EEPROM")
+        buttons_layout.addWidget(self.show_values_button)
+        buttons_layout.addWidget(self.new_mem_graph_button)
+        buttons_layout.addWidget(self.new_bk_graph_button)
+        buttons_layout.addWidget(self.show_eeprom_button)
+        buttons_layout.addStretch(1)
+        view_layout.addLayout(buttons_layout)
         view_group.setLayout(view_layout)
 
         # --- Automation Group ---
@@ -43,3 +52,4 @@ class ControlWidget(QWidget):
 
         top_level_layout.addLayout(main_layout)
         top_level_layout.addStretch(1)
+           
